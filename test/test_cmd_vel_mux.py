@@ -98,14 +98,16 @@ class TestCmdVelMux(unittest.TestCase):
                 'active'
             ]
         ) as command:
-            assert command.wait_for_output(functools.partial(
+            self.assertTrue(command.wait_for_output(functools.partial(
                 launch_testing.tools.expect_output, expected_lines=[
                     'data: idle',
                     '---'
                 ], strict=True
-            ), timeout=2)
+            ), timeout=2))
         with self.launch_topic_command(arguments=['echo', 'cmd_vel']) as command:
-            assert not command.wait_for_output(lambda output: len(output) > 0, timeout=2)
+            self.assertFalse(command.wait_for_output(
+                lambda output: len(output) > 0, timeout=2
+            ))
 
     def test_mux_with_single_input(self):
         default_twist = geometry_msgs.msg.Twist()
@@ -128,19 +130,19 @@ class TestCmdVelMux(unittest.TestCase):
                     'active'
                 ]
             ) as command:
-                assert command.wait_for_output(functools.partial(
+                self.assertTrue(command.wait_for_output(functools.partial(
                     launch_testing.tools.expect_output, expected_lines=[
                         "data: default_input",
                         '---'
                     ], strict=False
-                ), timeout=2)
+                ), timeout=2))
             with self.launch_topic_command(arguments=['echo', 'cmd_vel']) as command:
-                assert command.wait_for_output(functools.partial(
+                self.assertTrue(command.wait_for_output(functools.partial(
                     launch_testing.tools.expect_output, expected_lines=[
                         *default_twist_block_yaml.splitlines(),
                         '---'
                     ], strict=True
-                ), timeout=2)
+                ), timeout=2))
 
     def test_mux_priority_override(self):
         default_twist = geometry_msgs.msg.Twist()
@@ -176,19 +178,19 @@ class TestCmdVelMux(unittest.TestCase):
                     'active'
                 ]
             ) as command:
-                assert command.wait_for_output(functools.partial(
+                self.assertTrue(command.wait_for_output(functools.partial(
                     launch_testing.tools.expect_output, expected_lines=[
                         'data: navigation_stack_controller',
                         '---'
                     ], strict=False
-                ), timeout=2)
+                ), timeout=2))
             with self.launch_topic_command(arguments=['echo', 'cmd_vel']) as command:
-                assert command.wait_for_output(functools.partial(
+                self.assertTrue(command.wait_for_output(functools.partial(
                     launch_testing.tools.expect_output, expected_lines=[
                         *joystick_twist_block_yaml.splitlines(),
                         '---'
                     ], strict=True
-                ), timeout=2)
+                ), timeout=2))
 
     def test_mux_timeout(self):
         with self.launch_topic_command(
@@ -198,12 +200,12 @@ class TestCmdVelMux(unittest.TestCase):
                 'geometry_msgs/msg/Twist',
             ]
         ) as pub_command:
-            assert pub_command.wait_for_output(functools.partial(
+            self.assertTrue(pub_command.wait_for_output(functools.partial(
                 launch_testing.tools.expect_output, expected_lines=[
                     'publisher: beginning loop',
                     re.compile('publishing #1: .*')
                 ], strict=True
-            ), timeout=5)
+            ), timeout=5))
 
             with self.launch_topic_command(
                 arguments=[
@@ -213,11 +215,11 @@ class TestCmdVelMux(unittest.TestCase):
                     'active'
                 ]
             ) as echo_command:
-                assert echo_command.wait_for_output(functools.partial(
+                self.assertTrue(echo_command.wait_for_output(functools.partial(
                     launch_testing.tools.expect_output, expected_lines=[
                         'data: default_input',
                         '---',
                         'data: idle',
                         '---'
                     ], strict=False
-                ), timeout=2)
+                ), timeout=2))

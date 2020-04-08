@@ -77,7 +77,7 @@ CmdVelMux::CmdVelMux(rclcpp::NodeOptions options)
     RCLCPP_WARN(get_logger(), "No subscribers configured!");
   } else {
     std::map<std::string, ParameterValues> parsed_parameters = parseFromParametersMap(parameters);
-    if (parsed_parameters.size() == 0) {
+    if (parsed_parameters.empty()) {
       // We ran into some kind of error while configuring, quit
       throw std::runtime_error("Invalid parameters");
     }

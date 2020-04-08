@@ -127,11 +127,11 @@ class TestCmdVelMux(unittest.TestCase):
 
     def test_no_params(self):
         with self.launch_cmd_vel_mux_node(parameters={}) as node_process:
-            assert node_process.wait_for_output(functools.partial(
+            self.assertTrue(node_process.wait_for_output(functools.partial(
                 launch_testing.tools.expect_output, expected_lines=[
                     re.compile(r'.*WARN.*No subscribers configured!')
                 ], strict=False
-            ), timeout=2)
+            ), timeout=2))
 
     def test_invalid_subscriber(self):
         with self.launch_cmd_vel_mux_node(
@@ -141,14 +141,14 @@ class TestCmdVelMux(unittest.TestCase):
                 }
             }
         ) as node_process:
-            assert node_process.wait_for_output(functools.partial(
+            self.assertTrue(node_process.wait_for_output(functools.partial(
                 launch_testing.tools.expect_output, expected_lines=[
                     re.compile(r'.*std::runtime_error.*'),
                     re.compile(r'.*Invalid parameters.*')
                 ], strict=False
-            ), timeout=2)
-            assert node_process.wait_for_shutdown(timeout=2)
-            assert node_process.exit_code != launch_testing.asserts.EXIT_OK
+            ), timeout=2))
+        self.assertTrue(node_process.wait_for_shutdown(timeout=2))
+        self.assertNotEqual(node_process.exit_code, launch_testing.asserts.EXIT_OK)
 
     def test_invalid_subscriber_params(self):
         with self.launch_cmd_vel_mux_node(
@@ -160,14 +160,14 @@ class TestCmdVelMux(unittest.TestCase):
                 }
             }
         ) as node_process:
-            assert node_process.wait_for_output(functools.partial(
+            self.assertTrue(node_process.wait_for_output(functools.partial(
                 launch_testing.tools.expect_output, expected_lines=[
                     re.compile(r'.*std::runtime_error.*'),
                     re.compile(r'.*Invalid parameters.*')
                 ], strict=False
-            ), timeout=2)
-            assert node_process.wait_for_shutdown(timeout=2)
-            assert node_process.exit_code != launch_testing.asserts.EXIT_OK
+            ), timeout=2))
+        self.assertTrue(node_process.wait_for_shutdown(timeout=2))
+        self.assertNotEqual(node_process.exit_code, launch_testing.asserts.EXIT_OK)
 
     def test_incomplete_params(self):
         with self.launch_cmd_vel_mux_node(
@@ -181,14 +181,14 @@ class TestCmdVelMux(unittest.TestCase):
                 }
             }
         ) as node_process:
-            assert node_process.wait_for_output(functools.partial(
+            self.assertTrue(node_process.wait_for_output(functools.partial(
                 launch_testing.tools.expect_output, expected_lines=[
                     re.compile(r'.*std::runtime_error.*'),
                     re.compile(r'.*Incomplete parameters.*'),
                 ], strict=False
-            ), timeout=2)
-            assert node_process.wait_for_shutdown(timeout=2)
-            assert node_process.exit_code != launch_testing.asserts.EXIT_OK
+            ), timeout=2))
+        self.assertTrue(node_process.wait_for_shutdown(timeout=2))
+        self.assertNotEqual(node_process.exit_code, launch_testing.asserts.EXIT_OK)
 
     def test_params_update(self):
         with self.launch_cmd_vel_mux_node(parameters={
@@ -201,18 +201,19 @@ class TestCmdVelMux(unittest.TestCase):
                 }
             }
         }) as node_process:
-            assert node_process.wait_for_output(functools.partial(
+            self.assertTrue(node_process.wait_for_output(functools.partial(
                 launch_testing.tools.expect_output, expected_lines=[
                     re.compile(r'.*CmdVelMux : \(re\)configured.*'),
                 ], strict=False
-            ), timeout=2)
+            ), timeout=2))
 
             ok, reason = self.update_cmd_vel_mux_params(parameters={
                 'subscribers': {
                     'some_invalid_subscriber': ''
                 }
             })
-            assert not ok and reason == 'Invalid or unknown parameter'
+            self.assertFalse(ok)
+            self.assertEqual(reason, 'Invalid or unknown parameter')
 
             ok, reason = self.update_cmd_vel_mux_params(parameters={
                 'subscribers': {
@@ -223,7 +224,8 @@ class TestCmdVelMux(unittest.TestCase):
                     }
                 }
             })
-            assert not ok and reason == 'Incomplete parameters', reason
+            self.assertFalse(ok)
+            self.assertEqual(reason, 'Incomplete parameters')
 
             ok, reason = self.update_cmd_vel_mux_params(parameters={
                 'subscribers': {
@@ -232,7 +234,8 @@ class TestCmdVelMux(unittest.TestCase):
                     }
                 }
             })
-            assert not ok and reason == 'Invalid parameter'
+            self.assertFalse(ok)
+            self.assertEqual(reason, 'Invalid parameter')
 
             ok, _ = self.update_cmd_vel_mux_params(parameters={
                 'subscribers': {
@@ -244,4 +247,4 @@ class TestCmdVelMux(unittest.TestCase):
                     }
                 }
             })
-            assert ok
+            self.assertTrue(ok)
