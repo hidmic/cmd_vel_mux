@@ -30,13 +30,12 @@
 # ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
 
+import collections.abc
 import contextlib
-import functools
-import re
 import unittest
-import yaml
 
 import geometry_msgs.msg
+import std_msgs.msg
 
 import launch
 import launch.actions
@@ -46,7 +45,8 @@ import launch_ros.substitutions
 import launch_testing.actions
 import launch_testing.tools
 
-from rosidl_runtime_py import message_to_yaml
+import rclpy
+import rclpy.qos
 
 
 def generate_test_description():
@@ -64,6 +64,11 @@ def generate_test_description():
         ),
         launch_testing.actions.ReadyToTest()
     ])
+
+
+latching_qos_profile = rclpy.qos.QoSProfile(depth=1)
+latching_qos_profile.reliability = rclpy.qos.QoSReliabilityPolicy.RELIABLE
+latching_qos_profile.durability = rclpy.qos.QoSDurabilityPolicy.TRANSIENT_LOCAL
 
 
 class TestCmdVelMux(unittest.TestCase):
@@ -89,137 +94,140 @@ class TestCmdVelMux(unittest.TestCase):
                 yield topic_command
         cls.launch_topic_command = launch_topic_command
 
+        rclpy.init()
+        cls._node = rclpy.create_node(
+            'cmd_vel_mux_testing_node', start_parameter_services=False
+        )
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._node.destroy_node()
+        rclpy.shutdown()
+
+    @contextlib.contextmanager
+    def pub(
+        self,
+        message,
+        *,
+        topic,
+        rate,
+        qos_profile=None
+    ):
+        if qos_profile is None:
+            qos_profile = rclpy.qos.qos_profile_system_default
+        publisher = self._node.create_publisher(type(message), topic, qos_profile=qos_profile)
+        timer = self._node.create_timer(1.0 / rate, lambda *args: publisher.publish(message))
+        try:
+            yield
+        finally:
+            self._node.destroy_timer(timer)
+            self._node.destroy_publisher(publisher)
+
+    def expect(
+        self,
+        expected_sequence,
+        *,
+        topic,
+        message_type=None,
+        timeout=None,
+        qos_profile=None
+    ):
+        future = rclpy.task.Future()
+
+        if not isinstance(expected_sequence, collections.abc.Sequence):
+            if expected_sequence is not None:
+                expected_sequence = [expected_sequence]
+
+        if expected_sequence is not None and len(expected_sequence) > 0:
+            if message_type is None:
+                message_type = type(expected_sequence[0])
+            sequence_types = tuple(type(message) for message in expected_sequence)
+            if not all(type_ == message_type for type_ in sequence_types):
+                raise ValueError(
+                    f'inconsistent message types: found {sequence_types}'
+                    f' but expected {message_type} only'
+                )
+
+            def _callback(message):
+                nonlocal expected_sequence
+                if expected_sequence[0] == message:
+                    expected_sequence = expected_sequence[1:]
+                    if len(expected_sequence) == 0:
+                        future.set_result(None)
+        else:
+            if message_type is None:
+                raise ValueError('cannot infer message type')
+
+            def _callback(message):
+                future.set_result(None)
+
+        if qos_profile is None:
+            qos_profile = rclpy.qos.qos_profile_system_default
+
+        subscription = self._node.create_subscription(
+            message_type, topic, _callback, qos_profile=qos_profile
+        )
+        try:
+            rclpy.spin_until_future_complete(self._node, future, timeout_sec=timeout)
+            return ((expected_sequence is None) ^ future.done())
+        finally:
+            self._node.destroy_subscription(subscription)
+
     def test_idle_mux(self):
-        with self.launch_topic_command(
-            arguments=[
-                'echo',
-                '--qos-reliability', 'reliable',
-                '--qos-durability', 'transient_local',
-                'active'
-            ]
-        ) as command:
-            self.assertTrue(command.wait_for_output(functools.partial(
-                launch_testing.tools.expect_output, expected_lines=[
-                    'data: idle',
-                    '---'
-                ], strict=True
-            ), timeout=2))
-        with self.launch_topic_command(arguments=['echo', 'cmd_vel']) as command:
-            self.assertFalse(command.wait_for_output(
-                lambda output: len(output) > 0, timeout=2
-            ))
+        expected_active_input = std_msgs.msg.String()
+        expected_active_input.data = 'idle'
+        assert self.expect(
+            expected_active_input,
+            topic='active', timeout=2,
+            qos_profile=latching_qos_profile
+        )
+        assert self.expect(
+            None, topic='cmd_vel', message_type=geometry_msgs.msg.Twist, timeout=2
+        )
 
     def test_mux_with_single_input(self):
         default_twist = geometry_msgs.msg.Twist()
         default_twist.linear.x = 1.0
-        default_twist_block_yaml = message_to_yaml(default_twist)
-        default_twist_inline_yaml = yaml.dump(yaml.load(default_twist_block_yaml))
-        with self.launch_topic_command(
-            arguments=[
-                'pub', '-r', '20',
-                'input/default',
-                'geometry_msgs/msg/Twist',
-                f'{default_twist_inline_yaml}'
-            ]
-        ):
-            with self.launch_topic_command(
-                arguments=[
-                    'echo',
-                    '--qos-reliability', 'reliable',
-                    '--qos-durability', 'transient_local',
-                    'active'
-                ]
-            ) as command:
-                self.assertTrue(command.wait_for_output(functools.partial(
-                    launch_testing.tools.expect_output, expected_lines=[
-                        "data: default_input",
-                        '---'
-                    ], strict=False
-                ), timeout=2))
-            with self.launch_topic_command(arguments=['echo', 'cmd_vel']) as command:
-                self.assertTrue(command.wait_for_output(functools.partial(
-                    launch_testing.tools.expect_output, expected_lines=[
-                        *default_twist_block_yaml.splitlines(),
-                        '---'
-                    ], strict=True
-                ), timeout=2))
+        with self.pub(default_twist, topic='input/default', rate=20):
+            expected_active_input = std_msgs.msg.String()
+            expected_active_input.data = 'default_input'
+            assert self.expect(
+                expected_active_input,
+                topic='active', timeout=2,
+                qos_profile=latching_qos_profile
+            )
+            assert self.expect(default_twist, topic='cmd_vel', timeout=2)
 
     def test_mux_priority_override(self):
         default_twist = geometry_msgs.msg.Twist()
         default_twist.linear.x = 1.0
-        default_twist_block_yaml = message_to_yaml(default_twist)
-        default_twist_inline_yaml = yaml.dump(yaml.load(default_twist_block_yaml))
 
         joystick_twist = geometry_msgs.msg.Twist()
         joystick_twist.angular.z = 1.0
-        joystick_twist_block_yaml = message_to_yaml(joystick_twist)
-        joystick_twist_inline_yaml = yaml.dump(yaml.load(joystick_twist_block_yaml))
 
-        with self.launch_topic_command(
-            arguments=[
-                'pub', '-r', '20',
-                'input/default',
-                'geometry_msgs/msg/Twist',
-                f'{default_twist_inline_yaml}'
-            ]
-        ), self.launch_topic_command(
-            arguments=[
-                'pub', '-r', '20',
-                'input/joystick',
-                'geometry_msgs/msg/Twist',
-                f'{joystick_twist_inline_yaml}'
-            ]
+        with self.pub(
+            default_twist, topic='input/default', rate=20
+        ), self.pub(
+            joystick_twist, topic='input/joystick', rate=20
         ):
-            with self.launch_topic_command(
-                arguments=[
-                    'echo',
-                    '--qos-reliability', 'reliable',
-                    '--qos-durability', 'transient_local',
-                    'active'
-                ]
-            ) as command:
-                self.assertTrue(command.wait_for_output(functools.partial(
-                    launch_testing.tools.expect_output, expected_lines=[
-                        'data: navigation_stack_controller',
-                        '---'
-                    ], strict=False
-                ), timeout=2))
-            with self.launch_topic_command(arguments=['echo', 'cmd_vel']) as command:
-                self.assertTrue(command.wait_for_output(functools.partial(
-                    launch_testing.tools.expect_output, expected_lines=[
-                        *joystick_twist_block_yaml.splitlines(),
-                        '---'
-                    ], strict=True
-                ), timeout=2))
+            expected_active_input = std_msgs.msg.String()
+            expected_active_input.data = 'navigation_stack_controller'
+            assert self.expect(
+                expected_active_input,
+                topic='active', timeout=2,
+                qos_profile=latching_qos_profile
+            )
+            assert self.expect(joystick_twist, topic='cmd_vel', timeout=2)
 
     def test_mux_timeout(self):
-        with self.launch_topic_command(
-            arguments=[
-                'pub', '-r', '8',
-                'input/default',
-                'geometry_msgs/msg/Twist',
-            ]
-        ) as pub_command:
-            self.assertTrue(pub_command.wait_for_output(functools.partial(
-                launch_testing.tools.expect_output, expected_lines=[
-                    'publisher: beginning loop',
-                    re.compile('publishing #1: .*')
-                ], strict=True
-            ), timeout=5))
-
-            with self.launch_topic_command(
-                arguments=[
-                    'echo',
-                    '--qos-reliability', 'reliable',
-                    '--qos-durability', 'transient_local',
-                    'active'
-                ]
-            ) as echo_command:
-                self.assertTrue(echo_command.wait_for_output(functools.partial(
-                    launch_testing.tools.expect_output, expected_lines=[
-                        'data: default_input',
-                        '---',
-                        'data: idle',
-                        '---'
-                    ], strict=False
-                ), timeout=2))
+        no_twist = geometry_msgs.msg.Twist()
+        with self.pub(no_twist, topic='input/default', rate=8):
+            idle_input = std_msgs.msg.String()
+            idle_input.data = 'idle'
+            default_input = std_msgs.msg.String()
+            default_input.data = 'default_input'
+            assert self.expect(
+                [idle_input, default_input, idle_input],
+                topic='active', timeout=5,
+                qos_profile=latching_qos_profile
+            )
