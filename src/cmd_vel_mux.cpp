@@ -36,6 +36,13 @@
 
 #include "cmd_vel_mux/cmd_vel_mux.hpp"
 
+#include <geometry_msgs/msg/twist.hpp>
+#include <rcl_interfaces/msg/set_parameters_result.hpp>
+#include <rclcpp/rclcpp.hpp>
+#include <rclcpp_components/register_node_macro.hpp>
+#include <rcpputils/split.hpp>
+#include <std_msgs/msg/string.hpp>
+
 #include <chrono>
 #include <fstream>
 #include <functional>
@@ -47,13 +54,6 @@
 #include <string>
 #include <utility>
 #include <vector>
-
-#include "geometry_msgs/msg/twist.hpp"
-#include "rcl_interfaces/msg/set_parameters_result.hpp"
-#include "rclcpp/rclcpp.hpp"
-#include "rclcpp_components/register_node_macro.hpp"
-#include "rcpputils/split.hpp"
-#include "std_msgs/msg/string.hpp"
 
 /*****************************************************************************
 ** Namespaces
