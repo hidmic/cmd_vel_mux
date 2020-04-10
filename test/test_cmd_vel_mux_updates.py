@@ -45,9 +45,8 @@ import launch_testing.actions
 import launch_testing.markers
 import launch_testing.tools
 
-import rclpy
-
 import rcl_interfaces.srv
+import rclpy
 
 
 def flatten(d, prefix=None):
@@ -105,7 +104,7 @@ class TestCmdVelMux(unittest.TestCase):
         )
 
     def update_cmd_vel_mux_params(self, *, parameters):
-        assert self._cmd_vel_mux_set_parameters_client.wait_for_service(timeout_sec=5)
+        self.assertTrue(self._cmd_vel_mux_set_parameters_client.wait_for_service(timeout_sec=5))
 
         request = rcl_interfaces.srv.SetParametersAtomically.Request()
         print(flatten(parameters))
@@ -115,7 +114,7 @@ class TestCmdVelMux(unittest.TestCase):
         ]
         future = self._cmd_vel_mux_set_parameters_client.call_async(request)
         rclpy.spin_until_future_complete(self._node, future, timeout_sec=5.0)
-        assert future.done()
+        self.assertTrue(future.done())
         response = future.result()
         return response.result.successful, response.result.reason
 

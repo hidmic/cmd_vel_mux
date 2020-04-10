@@ -35,8 +35,6 @@ import contextlib
 import unittest
 
 import geometry_msgs.msg
-import std_msgs.msg
-
 import launch
 import launch.actions
 import launch.substitutions
@@ -44,9 +42,9 @@ import launch_ros.actions
 import launch_ros.substitutions
 import launch_testing.actions
 import launch_testing.tools
-
 import rclpy
 import rclpy.qos
+import std_msgs.msg
 
 
 def generate_test_description():
@@ -80,20 +78,6 @@ class TestCmdVelMux(unittest.TestCase):
         proc_info,
         proc_output
     ):
-        @contextlib.contextmanager
-        def launch_topic_command(self, arguments):
-            topic_command_action = launch.actions.ExecuteProcess(
-                cmd=['ros2', 'topic', *arguments],
-                additional_env={'PYTHONUNBUFFERED': '1'},
-                name='ros2topic-cli',
-                output='screen'
-            )
-            with launch_testing.tools.launch_process(
-                launch_service, topic_command_action, proc_info, proc_output
-            ) as topic_command:
-                yield topic_command
-        cls.launch_topic_command = launch_topic_command
-
         rclpy.init()
         cls._node = rclpy.create_node(
             'cmd_vel_mux_testing_node', start_parameter_services=False
@@ -176,14 +160,14 @@ class TestCmdVelMux(unittest.TestCase):
     def test_idle_mux(self):
         expected_active_input = std_msgs.msg.String()
         expected_active_input.data = 'idle'
-        assert self.expect(
+        self.assertTrue(self.expect(
             expected_active_input,
             topic='active', timeout=2,
             qos_profile=latching_qos_profile
-        )
-        assert self.expect(
+        ))
+        self.assertTrue(self.expect(
             None, topic='cmd_vel', message_type=geometry_msgs.msg.Twist, timeout=2
-        )
+        ))
 
     def test_mux_with_single_input(self):
         default_twist = geometry_msgs.msg.Twist()
@@ -191,12 +175,12 @@ class TestCmdVelMux(unittest.TestCase):
         with self.pub(default_twist, topic='input/default', rate=20):
             expected_active_input = std_msgs.msg.String()
             expected_active_input.data = 'default_input'
-            assert self.expect(
+            self.assertTrue(self.expect(
                 expected_active_input,
                 topic='active', timeout=2,
                 qos_profile=latching_qos_profile
-            )
-            assert self.expect(default_twist, topic='cmd_vel', timeout=2)
+            ))
+            self.assertTrue(self.expect(default_twist, topic='cmd_vel', timeout=2))
 
     def test_mux_priority_override(self):
         default_twist = geometry_msgs.msg.Twist()
@@ -212,12 +196,12 @@ class TestCmdVelMux(unittest.TestCase):
         ):
             expected_active_input = std_msgs.msg.String()
             expected_active_input.data = 'navigation_stack_controller'
-            assert self.expect(
+            self.assertTrue(self.expect(
                 expected_active_input,
                 topic='active', timeout=2,
                 qos_profile=latching_qos_profile
-            )
-            assert self.expect(joystick_twist, topic='cmd_vel', timeout=2)
+            ))
+            self.assertTrue(self.expect(joystick_twist, topic='cmd_vel', timeout=2))
 
     def test_mux_timeout(self):
         no_twist = geometry_msgs.msg.Twist()
@@ -226,8 +210,8 @@ class TestCmdVelMux(unittest.TestCase):
             idle_input.data = 'idle'
             default_input = std_msgs.msg.String()
             default_input.data = 'default_input'
-            assert self.expect(
+            self.assertTrue(self.expect(
                 [idle_input, default_input, idle_input],
                 topic='active', timeout=5,
                 qos_profile=latching_qos_profile
-            )
+            ))
